@@ -1,0 +1,17 @@
+<launch>
+  <node name="e210_d" pkg="pacecat_e210_d" type="pacecat_e210_d_node" output="screen">
+    <param name="scan_topic" value="scan"/>
+    <param name="cloud_topic" value="cloud"/>
+    <param name="frame_id" value="map" />
+     #DATA#
+    <param name="min_dist" value="0.01"/>
+    <param name="max_dist" value="50.0"/>
+    <param name="output_scan" value="true" />
+    <param name="output_cloud" value="false"/>
+    <param name="output_cloud2" value="false"/>
+    #CONNECT#
+    <param name="type" value="uart" />
+    <param name="com_name" value="/dev/ttyCH343USB0" />
+    <param name="baud_rate" value="3125000" />
+  </node>
+</launch>
