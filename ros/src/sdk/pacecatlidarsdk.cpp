@@ -10,6 +10,8 @@
 #include <ctime>
 #include <sstream>
 
+#define MAX_CMD_BUFFER 1024
+
 PaceCatLidarSDK *PaceCatLidarSDK::m_sdk = new (std::nothrow) PaceCatLidarSDK();
 PaceCatLidarSDK *PaceCatLidarSDK::getInstance()
 {
@@ -76,7 +78,7 @@ void PaceCatLidarSDK::Uninit()
 {
 	for (unsigned int i = 0; i < m_lidars.size(); i++)
 	{
-		m_lidars.at(i)->run_state = ZhuiMiProtocol::QUIT;
+		m_lidars.at(i)->run_state = Protocol::QUIT;
 	}
 }
 int PaceCatLidarSDK::AddLidar(std::string com_name, uint32_t bandrate)
@@ -85,7 +87,7 @@ int PaceCatLidarSDK::AddLidar(std::string com_name, uint32_t bandrate)
 	cfg->comname = com_name;
 	cfg->baudrate = bandrate;
 	cfg->ID = m_lidar_id_counter++;
-	cfg->run_state = ZhuiMiProtocol::ONLINE;
+	cfg->run_state = Protocol::ONLINE;
 	cfg->frame_cnt = 0;
 	cfg->cb_cloudpoint = NULL;
 	cfg->cb_logdata = NULL;
@@ -107,6 +109,12 @@ bool PaceCatLidarSDK::ConnectLidar(uint16_t ID)
 	if (lidar == nullptr)
 		return false;
 
+	if(lidar->handle <= 0)
+		lidar->handle = SystemAPI::open_serial_port(lidar->comname.c_str(),lidar->baudrate);
+	if (lidar->handle <= 0)
+		return false;
+
+
 	lidar->thread_subData = std::thread(&PaceCatLidarSDK::UartThreadProc, PaceCatLidarSDK::getInstance(), ID);
 	lidar->thread_subData.detach();
 	return true;
@@ -115,9 +123,9 @@ bool PaceCatLidarSDK::DisconnectLidar(uint16_t ID)
 {
 	for (unsigned int i = 0; i < m_lidars.size(); i++)
 	{
-		if (m_lidars.at(i)->ID == ID && m_lidars.at(i)->run_state != ZhuiMiProtocol::QUIT)
+		if (m_lidars.at(i)->ID == ID && m_lidars.at(i)->run_state != Protocol::QUIT)
 		{
-			m_lidars.at(i)->run_state = ZhuiMiProtocol::OFFLINE;
+			m_lidars.at(i)->run_state = Protocol::OFFLINE;
 			return true;
 		}
 	}
@@ -132,17 +140,17 @@ bool PaceCatLidarSDK::QuerySN(uint16_t ID, std::string &sn)
 
 	lidar->send_len = 6;
 	lidar->send_buf = "LUUIDH";
-	lidar->action = ZhuiMiProtocol::CMD_TALK;
+	lidar->action = Protocol::CMD_TALK;
 	int index = CMD_REPEAT;
-	while (lidar->action != ZhuiMiProtocol::FINISH && index > 0)
+	while (lidar->action != Protocol::FINISH && index > 0)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		index--;
 	}
-	if (lidar->action == ZhuiMiProtocol::FINISH)
+	if (lidar->action == Protocol::FINISH)
 	{
 		// printf("%s %d %s\n", __FUNCTION__, __LINE__,lidar->recv_buf.c_str());
-		lidar->action = ZhuiMiProtocol::NONE;
+		lidar->action = Protocol::NONE;
 		sn = lidar->recv_buf;
 		// printf("%s %d %s\n", __FUNCTION__, __LINE__,lidar->recv_buf.c_str());
 
@@ -158,19 +166,17 @@ bool PaceCatLidarSDK::QueryVersion(uint16_t ID, std::string &info)
 
 	lidar->send_len = 6;
 	lidar->send_buf = "LXVERH";
-	lidar->action = ZhuiMiProtocol::CMD_TALK;
+	lidar->action = Protocol::CMD_TALK;
 	int index = CMD_REPEAT;
-	while (lidar->action != ZhuiMiProtocol::FINISH && index > 0)
+	while (lidar->action != Protocol::FINISH && index > 0)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		index--;
 	}
-	if (lidar->action == ZhuiMiProtocol::FINISH)
+	if (lidar->action == Protocol::FINISH)
 	{
-		lidar->action = ZhuiMiProtocol::NONE;
+		lidar->action = Protocol::NONE;
 		info = lidar->recv_buf;
-		// printf("%s %d %s\n", __FUNCTION__, __LINE__,lidar->recv_buf.c_str());
-
 		return true;
 	}
 	return false;
@@ -182,24 +188,24 @@ bool PaceCatLidarSDK::SetLidarAction(uint16_t ID, int action)
 		return false;
 
 	lidar->send_len = 6;
-	if (action == ZhuiMiProtocol::START)
+	if (action == Protocol::START)
 		lidar->send_buf = "LSTARH";
-	else if (action == ZhuiMiProtocol::STOP)
+	else if (action == Protocol::STOP)
 		lidar->send_buf = "LSTOPH";
 	else
 		return false;
 
-	lidar->action = ZhuiMiProtocol::CMD_TALK;
+	lidar->action = Protocol::CMD_TALK;
 	int index = CMD_REPEAT;
-	while (lidar->action != ZhuiMiProtocol::FINISH && index > 0)
+	while (lidar->action != Protocol::FINISH && index > 0)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		index--;
 	}
-	if (lidar->action == ZhuiMiProtocol::FINISH)
+	if (lidar->action == Protocol::FINISH)
 	{
-		lidar->action = ZhuiMiProtocol::NONE;
-		printf("%s %d %s\n", __FUNCTION__, __LINE__, lidar->recv_buf.c_str());
+		lidar->action = Protocol::NONE;
+		// printf("%s %d %s\n", __FUNCTION__, __LINE__, lidar->recv_buf.c_str());
 
 		if (lidar->recv_buf == "OK")
 			return true;
@@ -214,16 +220,16 @@ bool PaceCatLidarSDK::SetRPM(uint16_t ID, uint16_t rpm)
 
 	lidar->send_len = 6;
 	lidar->send_buf = "LSRPM:" + std::to_string(rpm) + "H";
-	lidar->action = ZhuiMiProtocol::CMD_TALK;
+	lidar->action = Protocol::CMD_TALK;
 	int index = CMD_REPEAT;
-	while (lidar->action != ZhuiMiProtocol::FINISH && index > 0)
+	while (lidar->action != Protocol::FINISH && index > 0)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		index--;
 	}
-	if (lidar->action == ZhuiMiProtocol::FINISH)
+	if (lidar->action == Protocol::FINISH)
 	{
-		lidar->action = ZhuiMiProtocol::NONE;
+		lidar->action = Protocol::NONE;
 		if (lidar->recv_buf == "OK")
 			return true;
 	}
@@ -235,146 +241,172 @@ bool PaceCatLidarSDK::SetLidarUpgrade(uint16_t ID, std::string path)
 	if (lidar == nullptr)
 		return false;
 	char log_buf[1024] = {0};
-	sprintf(log_buf, "start upgrade:com_name:%s baudrate:%d path:%s", lidar->comname.c_str(), lidar->baudrate, path.c_str());
-	WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_WARM, log_buf, strlen(log_buf));
+	int log_buf_nr = 0;
+	log_buf_nr = sprintf(log_buf, "start upgrade:com_name:%s baudrate:%d path:%s", lidar->comname.c_str(), lidar->baudrate, path.c_str());
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, log_buf, log_buf_nr);
 
 	size_t len = 0;
-	uint8_t *file = load_bin(path.c_str(), len);
-	if (!file)
+	uint8_t *file_buf = load_bin(path.c_str(), len);
+	if (!file_buf)
 	{
-		sprintf(log_buf, "load  file failed:%s", path.c_str());
-		WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_ERROR, ZM_LOAD_FILE_NG, strlen(ZM_LOAD_FILE_NG));
 		return false;
 	}
-	sprintf(log_buf, "load firmware file");
-	WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_WARM, log_buf, strlen(log_buf));
-
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_LOAD_FILE_OK, strlen(ZM_LOAD_FILE_OK));
 	int h = SystemAPI::open_serial_port(lidar->comname.c_str(), lidar->baudrate);
 	if (h <= 0)
 	{
-		sprintf(log_buf, "can not open:%s %d", lidar->comname.c_str(), lidar->baudrate);
-		WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_ERROR, ZM_OPEN_COM_NG, strlen(ZM_OPEN_COM_NG));
 		return false;
 	}
-	char line[1025] = {0};
-	unsigned long dw;
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_OPEN_COM_OK, strlen(ZM_OPEN_COM_OK));
+	int max_outtime = 500;		 // 超时时间ms
+	int max_trytime = 10;		 // 重试次数
+	int one_subpacket_len = 128; // 固件数据传输单次字节128
+	int recv_len = 0;
+	unsigned char recv_buf[1024] = {0};
+	int recv_code;
 
-	for (int i = 5; i >= 0; i--)
-	{
-		write(h, "LSBPS:500000H", 13);
-		// write(h, "LSTOPH", 6);
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	}
-	change_baud(h, 500000);
+	// 先切换雷达的波特率
+	unsigned char cmd_buf[512] = {0};
+	Protocol::TX_CmdHeader *tx_cmd = (Protocol::TX_CmdHeader *)cmd_buf;
+	tx_cmd->head[0] = 0x4c;
+	tx_cmd->head[1] = 0x48;
+	tx_cmd->size = 5 + 4;
+	tx_cmd->cmd = Protocol::ZM_CMD_TYPE_SET_BPS;
+	uint32_t cmd_bps = 115200;
+	memcpy(tx_cmd->data, &cmd_bps, sizeof(uint32_t));
 
-	uint64_t t = SystemAPI::GetTimeStamp(true);
-	uint64_t t2 = t;
-	bool bReady = false;
-	int trynum = 5;
-	while (!bReady)
+	uint32_t crc = BaseAPI::stm32crc_8(cmd_buf, tx_cmd->size);
+	memcpy(cmd_buf + tx_cmd->size, &crc, sizeof(uint32_t));
+	// 该命令没有返回值,但是可以用连续的两个报警包判定是否是处于115200的波特率状态下
+	bool isok = false;
+	for (int i = 10; i >= 0; i--)
 	{
-		if (SystemAPI::GetTimeStamp(true) > t + 500)
+		write(h, cmd_buf, tx_cmd->size + 4);
+		SystemAPI::closefd(h, false);
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		h = SystemAPI::open_serial_port(lidar->comname.c_str(), 115200);
+		if (checkBPS_isok(h))
 		{
-			dw = write(h, "LFWUPH", 6);
-			t = SystemAPI::GetTimeStamp(true);
-		}
-		if (SystemAPI::GetTimeStamp(true) > t + 1500)
-		{
-			t = SystemAPI::GetTimeStamp(true);
-			if (trynum > 0)
-			{
-				write(h, "LFWUPH", 6);
-				trynum--;
-			}
-			else
-			{
-				SystemAPI::closefd(h, false);
-				sprintf(log_buf, "LFWUPH talk error");
-				WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
-				return false;
-			}
-		}
-		dw = XReadFile(h, line, 1024);
-		if (dw > 0)
-		{
-			line[dw] = 0;
-			// printf("lidar : %s\n", line);
-			for (unsigned int i = 0; i + 6 <= dw; i++)
-			{
-				if (memcmp(line + i, "LFWUQH", 6) == 0)
-				{
-					bReady = true;
-					break;
-				}
-			}
-		}
-	}
-	int nl = sprintf(line, "LFWUI:%08lX,%08X,H", len, 0xffffffff);
-	// MYLOG<<QByteArray(line,25);
-	write(h, line, nl);
-	bReady = false;
-	int nr = 0;
-	while (!bReady && nr < 1000)
-	{
-		int r = XReadFile(h, line + nr, 1024 - nr);
-		if (r > 0)
-		{
-			line[nr + r - 1] = 0;
-			// printf("lidar : %s\n", line+nr);
-			nr += r;
-			for (int i = 0; i + 7 <= nr; i++)
-			{
-				if (memcmp(line + i, "FWUI OK", 7) == 0)
-				{
-					bReady = true;
-					break;
-				}
-			}
-		}
-		if (SystemAPI::GetTimeStamp(true) > t + 2000)
-		{
+			isok = true;
 			break;
 		}
-	}
-	if (!bReady)
-	{
-		sprintf(log_buf, "send bin length failed");
-		WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
 		SystemAPI::closefd(h, false);
+		h = SystemAPI::open_serial_port(lidar->comname.c_str(), lidar->baudrate);
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_ERROR, ZM_CMD_TYPE_SET_BPS_NG_TRY, strlen(ZM_CMD_TYPE_SET_BPS_NG_TRY));
+	}
+	if (!isok)
+	{
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_ERROR, ZM_CMD_TYPE_SET_BPS_NG, strlen(ZM_CMD_TYPE_SET_BPS_NG));
 		return false;
 	}
-	sprintf(log_buf, "send bin length ok");
-	WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_WARM, log_buf, strlen(log_buf));
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_CMD_TYPE_SET_BPS_OK, strlen(ZM_CMD_TYPE_SET_BPS_OK));
 
-	if (xmodem_send(h, len, file) != 0)
+	// 通知雷达开始升级
+	tx_cmd->size = 5;
+	tx_cmd->cmd = Protocol::ZM_CMD_TYPE_START_UPDATE;
+	crc = BaseAPI::stm32crc_8(cmd_buf, tx_cmd->size);
+	memcpy(cmd_buf + tx_cmd->size, &crc, sizeof(uint32_t));
+
+	recv_code = readbuf(h, 13, MAX_CMD_BUFFER, max_outtime, max_trytime, Protocol::ZM_CMD_TYPE_START_UPDATE, cmd_buf, tx_cmd->size + 4, recv_buf, recv_len);
+	if (recv_code != Protocol::ZM_ACK_TYPE_OK)
 	{
-		sprintf(log_buf, "transfer file error");
-		WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+		// MYLOG<<"ZM_CMD_TYPE_START_UPDATE:"<<recv_code;
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_ERROR, ZM_CMD_TYPE_START_UPDATE_NG, strlen(ZM_CMD_TYPE_START_UPDATE_NG));
 		SystemAPI::closefd(h, false);
 		return false;
 	}
-	sprintf(log_buf, "firmware file update success");
-	WriteLogDataCallBack(lidar->ID, ZhuiMiProtocol::MSG_WARM, log_buf, strlen(log_buf));
+	// MYLOG<<"ZM_CMD_TYPE_START_UPDATE:OK";
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_CMD_TYPE_START_UPDATE_OK, strlen(ZM_CMD_TYPE_START_UPDATE_OK));
+
+	// 传输固件总大小和CRC
+	tx_cmd->size = 5 + 8;
+	tx_cmd->cmd = Protocol::ZM_CMD_TYPE_FIRMWARE_INFO;
+
+	uint32_t file_len = len;
+	memcpy(&tx_cmd->data[0], &file_len, sizeof(uint32_t));
+	uint32_t crc_file = BaseAPI::stm32crc_8(file_buf, file_len);
+	memcpy(&tx_cmd->data[4], &crc_file, sizeof(uint32_t));
+
+	crc = BaseAPI::stm32crc_8(cmd_buf, tx_cmd->size);
+	memcpy(cmd_buf + tx_cmd->size, &crc, sizeof(uint32_t));
+
+	recv_code = readbuf(h, 13, MAX_CMD_BUFFER, max_outtime, max_trytime, Protocol::ZM_CMD_TYPE_FIRMWARE_INFO, cmd_buf, tx_cmd->size + 4, recv_buf, recv_len);
+	if (recv_code != Protocol::ZM_ACK_TYPE_OK)
+	{
+		// MYLOG<<"ZM_CMD_TYPE_FIRMWARE_INFO:"<<recv_code;
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_CMD_TYPE_FIRMWARE_INFO_NG, strlen(ZM_CMD_TYPE_FIRMWARE_INFO_NG));
+		SystemAPI::closefd(h, false);
+		return false;
+	}
+	// MYLOG<<"ZM_CMD_TYPE_FIRMWARE_INFO:OK";
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_CMD_TYPE_FIRMWARE_INFO_OK, strlen(ZM_CMD_TYPE_FIRMWARE_INFO_OK));
+
+	// 传输固件数据
+	tx_cmd->size = 5 + 4 + 128;
+	tx_cmd->cmd = Protocol::ZM_CMD_TYPE_FIRMWARE_DATA;
+
+	int packet_num = file_len % one_subpacket_len == 0 ? file_len / one_subpacket_len : file_len / one_subpacket_len + 1;
+	// MYLOG<<"packet sum:"<<packet_num;
+	// 因为file_buf的总大小为1MB，且初始化已经全部置为0,所以最后一个包多出来字节的时候，直接拷贝，不会越界以及会自动补零
+	for (int i = 0; i < packet_num; i++)
+	{
+		memcpy(&tx_cmd->data[0], &i, sizeof(uint32_t));
+		memcpy(&tx_cmd->data[4], &file_buf[i * one_subpacket_len], one_subpacket_len);
+
+		crc = BaseAPI::stm32crc_8(cmd_buf, tx_cmd->size);
+		memcpy(cmd_buf + tx_cmd->size, &crc, sizeof(uint32_t));
+		recv_code = readbuf(h, 13, MAX_CMD_BUFFER, max_outtime, max_trytime, Protocol::ZM_CMD_TYPE_FIRMWARE_DATA, cmd_buf, tx_cmd->size + 4, recv_buf, recv_len);
+		float rate = 100.0 * i / packet_num;
+		if (recv_code != Protocol::ZM_ACK_TYPE_OK)
+		{
+			// MYLOG<<"ZM_CMD_TYPE_FIRMWARE_DATA:"<<recv_code<<" "<<i;
+			WriteLogDataCallBack(lidar->ID, Protocol::MSG_ERROR, ZM_CMD_TYPE_FIRMWARE_DATA_NG, strlen(ZM_CMD_TYPE_FIRMWARE_DATA_NG));
+			SystemAPI::closefd(h, false);
+			return false;
+		}
+		log_buf_nr = sprintf(log_buf, "sync process:%f", rate);
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, log_buf, log_buf_nr);
+	}
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_CMD_TYPE_FIRMWARE_DATA_OK, strlen(ZM_CMD_TYPE_FIRMWARE_DATA_OK));
+
+	// 查询固件升级状态
+	tx_cmd->size = 5;
+	tx_cmd->cmd = Protocol::ZM_CMD_TYPE_END_UPDATE;
+
+	crc = BaseAPI::stm32crc_8(cmd_buf, tx_cmd->size);
+	memcpy(cmd_buf + tx_cmd->size, &crc, sizeof(uint32_t));
+	recv_code = readbuf(h, 13, MAX_CMD_BUFFER, max_outtime, max_trytime, Protocol::ZM_CMD_TYPE_END_UPDATE, cmd_buf, tx_cmd->size + 4, recv_buf, recv_len);
+	if (recv_code != Protocol::ZM_ACK_TYPE_OK)
+	{
+		// MYLOG<<"ZM_CMD_TYPE_END_UPDATE:"<<recv_code;
+		WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_CMD_TYPE_END_UPDATE_NG, strlen(ZM_CMD_TYPE_END_UPDATE_NG));
+		SystemAPI::closefd(h, false);
+		return false;
+	}
+	WriteLogDataCallBack(lidar->ID, Protocol::MSG_WARM, ZM_CMD_TYPE_END_UPDATE_OK, strlen(ZM_CMD_TYPE_END_UPDATE_OK));
 	SystemAPI::closefd(h, false);
+	lidar->handle = 0;
 	return true;
 }
-
 bool PaceCatLidarSDK::ClearFrameCache(uint16_t ID)
 {
 	RunConfig *lidar = GetConfig(ID);
 	if (lidar == nullptr)
 		return false;
 
-	lidar->action = ZhuiMiProtocol::CACHE_CLEAR;
+	lidar->action = Protocol::CACHE_CLEAR;
 	int index = CMD_REPEAT;
-	while (lidar->action != ZhuiMiProtocol::FINISH && index > 0)
+	while (lidar->action != Protocol::FINISH && index > 0)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		index--;
 	}
-	if (lidar->action == ZhuiMiProtocol::FINISH)
+	if (lidar->action == Protocol::FINISH)
 	{
-		lidar->action = ZhuiMiProtocol::NONE;
+		lidar->action = Protocol::NONE;
 		return true;
 	}
 	return false;
@@ -398,14 +430,14 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 		return;
 	unsigned char *recv_buf = (unsigned char *)malloc(BUF_SIZE);
 	// 一帧最多3600个点
-	uint16_t max_frame_len = sizeof(ZhuiMiProtocol::Packet_ZM) + sizeof(ZhuiMiProtocol::Point_ZM) * 3600;
-	ZhuiMiProtocol::Packet_ZM *packet_frame = (ZhuiMiProtocol::Packet_ZM *)malloc(max_frame_len);
+	uint16_t max_frame_len = sizeof(Protocol::Packet_ZM) + sizeof(Protocol::Point_ZM) * 3600;
+	Protocol::Packet_ZM *packet_frame = (Protocol::Packet_ZM *)malloc(max_frame_len);
 
 	char log_buf[1024] = {0};
 	int buf_len = 0;
 	sprintf(log_buf, "wait lidar data:com_name:%s baudrate:%d ...", cfg->comname.c_str(), cfg->baudrate);
-	WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
-	std::vector<ZhuiMiProtocol::Point_ZM> points;
+	WriteLogDataCallBack(cfg->ID, Protocol::MSG_WARM, log_buf, strlen(log_buf));
+	std::vector<Protocol::Point_ZM> points;
 	points.reserve(3600);
 	// uint8_t frame_flag = 0;	   // 0/1/2   head body foot
 	int32_t sequence_num = -1;	   // 包下标
@@ -426,22 +458,25 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 	// cmdtasklist.cmdtask.push(CmdTask{0, 0, "LSTOPH"});
 	// cmdtasklist.cmdtask.push(CmdTask{0, 0, "LSTARH"});
 	// cmdtasklist.cmdtask.push(CmdTask{0, 0, "LSRPM:900H"});
-
-	while (cfg->run_state != ZhuiMiProtocol::QUIT)
+	while (cfg->run_state != Protocol::QUIT)
 	{
-		// 任务分发
-		if (cfg->action == ZhuiMiProtocol::CMD_TALK)
+		if (cfg->run_state == Protocol::BUSY)
 		{
-			// printf("%s %d\n", __FUNCTION__, __LINE__);
-			cmdtasklist.cmdtask.push(CmdTask{0, 0, cfg->send_buf.c_str()});
-			cfg->action = ZhuiMiProtocol::NONE;
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			continue;
 		}
-		else if (cfg->action == ZhuiMiProtocol::CACHE_CLEAR)
+		// 任务分发
+		if (cfg->action == Protocol::CMD_TALK)
+		{
+			cmdtasklist.cmdtask.push(CmdTask{0, 0, cfg->send_buf.c_str()});
+			cfg->action = Protocol::NONE;
+		}
+		else if (cfg->action == Protocol::CACHE_CLEAR)
 		{
 			points.clear();
 			sequence_num = 0;
-			memset(packet_frame, 0, sizeof(ZhuiMiProtocol::Packet_ZM));
-			cfg->action = ZhuiMiProtocol::FINISH;
+			memset(packet_frame, 0, sizeof(Protocol::Packet_ZM));
+			cfg->action = Protocol::FINISH;
 		}
 		// 指令任务处理
 		if (!cmdtasklist.cmdtask.empty())
@@ -458,7 +493,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 			if (cmdtask.send_timestamp == 0 || (timestamp - cmdtask.send_timestamp > cmdtasklist.max_waittime * 1000))
 			{
 				sprintf(log_buf, "%s %lu  time:%lu %lu %d\n", cmdtask.cmd.c_str(), cmdtask.cmd.size(), timestamp, cmdtask.send_timestamp, cmdtask.tried);
-				WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+				WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 
 				write(cfg->handle, cmdtask.cmd.c_str(), cmdtask.cmd.size());
 				cmdtask.send_timestamp = timestamp;
@@ -471,13 +506,13 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 		if ((last_frame_timestamp != 0) && timestamp - last_frame_timestamp > 1000)
 		{
 			sprintf(log_buf, "1s no frame data");
-			WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+			WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 			last_frame_timestamp = timestamp;
 		}
 		if (last_span_timestamp != 0 && timestamp - last_span_timestamp > 1000)
 		{
 			sprintf(log_buf, "1s no span data");
-			WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+			WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 			last_span_timestamp = timestamp;
 		}
 		fd_set fds;
@@ -488,13 +523,13 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 		if (ret < 0)
 		{
 			sprintf(log_buf, "select error,thread end");
-			WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+			WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 			return;
 		}
 		else if (ret == 0)
 		{
 			sprintf(log_buf, "no data");
-			WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+			WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			continue;
 		}
@@ -504,7 +539,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 			if (nr < 0)
 			{
 				// sprintf(log_buf, "cache len: %d  read len: %d", buf_len, nr);
-				// WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+				// WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 				// break;
 				continue;
 			}
@@ -514,12 +549,12 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 			}
 			if (nr > 0)
 			{
-				//printf("%d %d\n",buf_len,nr);
+				// printf("%d %d\n",buf_len,nr);
 				buf_len += nr;
 				if (buf_len >= (BUF_SIZE / 2))
 				{
 					sprintf(log_buf, "cache is too many:%d %d", buf_len, nr);
-					WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+					WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 				}
 			}
 		}
@@ -527,7 +562,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 		{
 			uint16_t consume = 0;
 			bool isfind = false;
-			uint16_t last_consume=0;
+			uint16_t last_consume = 0;
 			uint16_t idx = 0;
 			while (1)
 			{
@@ -539,9 +574,9 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 					{
 						// printf("%s %d\n", __FUNCTION__, __LINE__);
 						int ret = parsePointCloud(cfg->ID, (uint8_t *)&recv_buf[idx], buf_len - idx, sequence_num, last_timestamp, last_start_angle, first_start_angle, consume, points, *packet_frame);
-						if(ret==0)
+						if (ret == 0)
 						{
-							consume=idx;
+							consume = idx;
 							break;
 						}
 						if (ret == 2)
@@ -550,36 +585,36 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 							{
 								is_first_frame = false;
 								sprintf(log_buf, "PaceCat sdk start work");
-								WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+								WriteLogDataCallBack(cfg->ID, Protocol::MSG_WARM, log_buf, strlen(log_buf));
 							}
 							// printf("%s %d %d %d\n", __FUNCTION__, __LINE__,points.size(),consume);
 							packet_frame->start_angle = first_start_angle;
-							//帧数据全为0的判定
-							bool isallzero=true;
-							for(uint16_t i=0;i<packet_frame->pointnum;i++)
+							// 帧数据全为0的判定
+							bool isallzero = true;
+							for (uint16_t i = 0; i < packet_frame->pointnum; i++)
 							{
-								if(packet_frame->pointdata[i].distance>0&&packet_frame->pointdata[i].distance<65533)
+								if (packet_frame->pointdata[i].distance > 0 && packet_frame->pointdata[i].distance < 65533)
 								{
-									isallzero=false;
+									isallzero = false;
 									break;
 								}
 							}
-							if(isallzero)
+							if (isallzero)
 							{
 								sprintf(log_buf, "one frame is all zero");
-								WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+								WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 							}
 							WritetPointCloudCallBack(cfg->ID, 0, packet_frame, max_frame_len);
 							points.clear();
-							memset(packet_frame, 0, sizeof(ZhuiMiProtocol::Packet_ZM));
+							memset(packet_frame, 0, sizeof(Protocol::Packet_ZM));
 							last_frame_timestamp = SystemAPI::GetTimeStamp(true);
 						}
 						if (ret == -2)
 						{
 							sprintf(log_buf, "merge one frame ng");
-							WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+							WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 							points.clear();
-							memset(packet_frame, 0, sizeof(ZhuiMiProtocol::Packet_ZM));
+							memset(packet_frame, 0, sizeof(Protocol::Packet_ZM));
 						}
 						if (ret == 1)
 						{
@@ -593,30 +628,30 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 
 						// if(ret==1||ret==2)
 						// 	printf("%s %d %d %d\n", __FUNCTION__, __LINE__,idx,consume);
-							
+
 						break;
 					} // 报警包
 					else if (recv_buf[idx + 0] == 0x53 && recv_buf[idx + 1] == 0x54 && recv_buf[idx + 6] == 0x45 && recv_buf[idx + 7] == 0x44)
 					{
 						// printf("%s %d\n", __FUNCTION__, __LINE__);
-						int minlen = idx + sizeof(ZhuiMiProtocol::Alarm_ZM);
+						int minlen = idx + sizeof(Protocol::Alarm_ZM);
 						if (minlen > buf_len)
 						{
 							consume = idx;
 							break;
 						}
-						ZhuiMiProtocol::Alarm_ZM *alarm_zm = (ZhuiMiProtocol::Alarm_ZM *)(recv_buf + idx);
-						uint32_t crc = BaseAPI::stm32crc_8((uint8_t *)alarm_zm, sizeof(ZhuiMiProtocol::Alarm_ZM) - 4);
+						Protocol::Alarm_ZM *alarm_zm = (Protocol::Alarm_ZM *)(recv_buf + idx);
+						uint32_t crc = BaseAPI::stm32crc_8((uint8_t *)alarm_zm, sizeof(Protocol::Alarm_ZM) - 4);
 						consume = minlen;
 						// MYLOG<<crc<<alarm_zm->crc;
 						if (crc != alarm_zm->crc)
 						{
 							sprintf(log_buf, "alarm crc error");
-							WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+							WriteLogDataCallBack(cfg->ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 							break;
 						}
-						//printf("%s %d %d %d\n", __FUNCTION__, __LINE__,idx,consume);
-						WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_ALARM, (char *)&alarm_zm->state, sizeof(uint32_t));
+						// printf("%s %d %d %d\n", __FUNCTION__, __LINE__,idx,consume);
+						WriteLogDataCallBack(cfg->ID, Protocol::MSG_ALARM, (char *)&alarm_zm->state, sizeof(uint32_t));
 						isfind = true;
 						break;
 					} // 启停应答
@@ -644,7 +679,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 						int len = idx + separatorIdx + separatorIdx2 + 4;
 						consume = len;
 
-						cfg->action = ZhuiMiProtocol::FINISH;
+						cfg->action = Protocol::FINISH;
 						cfg->recv_buf = str3;
 						cfg->recv_len = str3.size();
 						// printf("len:%d %d\n", separatorIdx, separatorIdx2);
@@ -676,7 +711,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 						int len = idx + separatorIdx + separatorIdx2 + 4;
 						consume = len;
 
-						cfg->action = ZhuiMiProtocol::FINISH;
+						cfg->action = Protocol::FINISH;
 						cfg->recv_buf = str3;
 						cfg->recv_len = str3.size();
 						// printf("len:%d %d\n", separatorIdx,separatorIdx2);
@@ -710,7 +745,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 						int separatorIdx5 = str5.find("\r\n");
 						std::string str6 = str5.substr(separatorIdx5 + 2);
 						int separatorIdx6 = str6.find("\r\n");
-						int len = idx+separatorIdx + separatorIdx2 + separatorIdx3 + separatorIdx4 + separatorIdx5 + separatorIdx6 + 12;
+						int len = idx + separatorIdx + separatorIdx2 + separatorIdx3 + separatorIdx4 + separatorIdx5 + separatorIdx6 + 12;
 						consume = len;
 
 						int mcu_idx = str2.find(":");
@@ -725,7 +760,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 						if (separatorIdx4 != motor_idx + 1)
 							motorhversion = str4.substr(motor_h_idx + 1, separatorIdx4 - motor_h_idx - 1);
 
-						cfg->action = ZhuiMiProtocol::FINISH;
+						cfg->action = Protocol::FINISH;
 						cfg->recv_buf = mcuversion + "|" + motorversion + "|" + motorhversion;
 						cfg->recv_len = cfg->recv_buf.size();
 						isfind = true;
@@ -760,25 +795,25 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 						int len = idx + separatorIdx + separatorIdx2 + separatorIdx3 + separatorIdx4 + 8;
 						consume = len;
 						// printf("LUUIDH:%d %d  %s %u %u %llu\n", len, idx, sn.c_str(),sn.size(),cmdtasklist.cmdtask.size(),SystemAPI::GetTimeStamp(true));
-						cfg->action = ZhuiMiProtocol::FINISH;
+						cfg->action = Protocol::FINISH;
 						cfg->recv_buf = sn;
 						cfg->recv_len = sn.size();
 						isfind = true;
 						break;
 					}
 				}
-				//如果两次解析出的长度一样，说明已经无法解析了
-				//printf("%d %d %d \n",__LINE__,last_consume,consume);
-				if(last_consume == consume)
+				// 如果两次解析出的长度一样，说明已经无法解析了
+				// printf("%d %d %d \n",__LINE__,last_consume,consume);
+				if (last_consume == consume)
 					break;
-				last_consume =consume;
+				last_consume = consume;
 			}
 			// 如果缓存大于一半，并且找不到存在的包，则清空BUF_SIZE/4的缓存
 			if (buf_len > BUF_SIZE / 2 && !isfind)
 			{
 				consume = BUF_SIZE / 4;
 				sprintf(log_buf, "cache clear 1/4");
-				WriteLogDataCallBack(cfg->ID, ZhuiMiProtocol::MSG_DEBUG, log_buf, strlen(log_buf));
+				WriteLogDataCallBack(cfg->ID, Protocol::MSG_DEBUG, log_buf, strlen(log_buf));
 				// printf("%s %d no find %d\n", __FUNCTION__, __LINE__,buf_len);
 			}
 			if (consume > 0)
@@ -786,7 +821,25 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 				// data is not whole fan,drop it
 				if (!isfind)
 				{
-					printf("drop %d bytes: %02x %02x %02x %02x %02x %02x \n",
+					bool isA5head=true;
+					if(consume==5)
+					{
+						for(int i=0;i<consume;i++)
+						{
+							if(recv_buf[i]!=0xa5)
+							{
+								isA5head = false;
+								break;
+							}
+						}
+					}
+					else
+					{
+						isA5head=false;
+					}
+
+					if(!isA5head)
+						printf("drop %d bytes: %02x %02x %02x %02x %02x %02x \n",
 						   consume,
 						   recv_buf[0], recv_buf[1], recv_buf[2],
 						   recv_buf[3], recv_buf[4], recv_buf[5]);
@@ -795,7 +848,7 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 				for (int i = consume; i < buf_len; i++)
 					recv_buf[i - consume] = recv_buf[i];
 
-				//printf("%s %d %d %d\n", __FUNCTION__, __LINE__,buf_len,consume);
+				// printf("%s %d %d %d\n", __FUNCTION__, __LINE__,buf_len,consume);
 				buf_len -= consume;
 			}
 		}
@@ -803,10 +856,10 @@ void PaceCatLidarSDK::UartThreadProc(uint16_t id)
 	delete[] recv_buf;
 }
 
-int PaceCatLidarSDK::parsePointCloud(int ID, uint8_t *data, uint16_t len, int32_t &sequence_num, uint64_t &last_timestamp, uint16_t &last_start_angle, int &first_start_angle, uint16_t &consume, std::vector<ZhuiMiProtocol::Point_ZM> &points, ZhuiMiProtocol::Packet_ZM &packet_frame)
+int PaceCatLidarSDK::parsePointCloud(int ID, uint8_t *data, uint16_t len, int32_t &sequence_num, uint64_t &last_timestamp, uint16_t &last_start_angle, int &first_start_angle, uint16_t &consume, std::vector<Protocol::Point_ZM> &points, Protocol::Packet_ZM &packet_frame)
 {
-	ZhuiMiProtocol::Packet_Head_ZM *head = (ZhuiMiProtocol::Packet_Head_ZM *)data;
-	int minlen = sizeof(ZhuiMiProtocol::Packet_Head_ZM);
+	Protocol::Packet_Head_ZM *head = (Protocol::Packet_Head_ZM *)data;
+	int minlen = sizeof(Protocol::Packet_Head_ZM);
 	if (minlen > len)
 		return 0;
 
@@ -818,14 +871,14 @@ int PaceCatLidarSDK::parsePointCloud(int ID, uint8_t *data, uint16_t len, int32_
 	else if (head->data_type == 2)
 		point_num = 90;
 
-	minlen = sizeof(ZhuiMiProtocol::Packet_Head_ZM) + sizeof(ZhuiMiProtocol::Packet_Body_ZM) + sizeof(ZhuiMiProtocol::Point_ZM) * point_num;
+	minlen = sizeof(Protocol::Packet_Head_ZM) + sizeof(Protocol::Packet_Body_ZM) + sizeof(Protocol::Point_ZM) * point_num;
 	if (minlen > len)
 		return 0;
 	consume = minlen;
 	char log_buf[1024] = {0};
 	int result = 0;
-	ZhuiMiProtocol::Point_ZM *point_zm = (ZhuiMiProtocol::Point_ZM *)(&head->data[0]);
-	ZhuiMiProtocol::Packet_Body_ZM *packet_body_zm = (ZhuiMiProtocol::Packet_Body_ZM *)(&head->data[0] + sizeof(ZhuiMiProtocol::Point_ZM) * point_num);
+	Protocol::Point_ZM *point_zm = (Protocol::Point_ZM *)(&head->data[0]);
+	Protocol::Packet_Body_ZM *packet_body_zm = (Protocol::Packet_Body_ZM *)(&head->data[0] + sizeof(Protocol::Point_ZM) * point_num);
 	int packet_idx_diff = (int)(packet_body_zm->sequence_num) - (int)sequence_num;
 	uint64_t packet_timestamp = datetime_to_nanoseconds(head->date_time[0] + 1900, head->date_time[1], head->date_time[2],
 														head->date_time[3], head->date_time[4], head->date_time[5], head->timestamp * 1000);
@@ -834,18 +887,18 @@ int PaceCatLidarSDK::parsePointCloud(int ID, uint8_t *data, uint16_t len, int32_
 	if (packet_idx_diff != 1 && packet_idx_diff != -65535 && sequence_num >= 0)
 	{
 		sprintf(log_buf, "drop packet last idx:%d current idx:%d last start angle:%d current start angle:%d last time:%ld current time:%ld", sequence_num, packet_body_zm->sequence_num, last_start_angle, head->start_angle / 100, last_timestamp, packet_timestamp);
-		WriteLogDataCallBack(ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+		WriteLogDataCallBack(ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 		result = -3;
 	}
 	if (timestamp_diff > 10000000 && last_timestamp)
 	{
 		sprintf(log_buf, "time interval large,packet last idx:%d current idx:%d diff:%ld,last time:%ld current time:%ld", sequence_num, packet_body_zm->sequence_num, timestamp_diff, last_timestamp, packet_timestamp);
-		WriteLogDataCallBack(ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+		WriteLogDataCallBack(ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 	}
 	else if (timestamp_diff < 0 && last_timestamp)
 	{
 		sprintf(log_buf, "time jumpback,packet last idx:%d current idx:%d diff:%ld,last time:%ld current time:%ld", sequence_num, packet_body_zm->sequence_num, timestamp_diff, last_timestamp, packet_timestamp);
-		WriteLogDataCallBack(ID, ZhuiMiProtocol::MSG_ERROR, log_buf, strlen(log_buf));
+		WriteLogDataCallBack(ID, Protocol::MSG_ERROR, log_buf, strlen(log_buf));
 	}
 
 	if (packet_idx_diff == 1 || packet_idx_diff == -65535)
@@ -857,7 +910,7 @@ int PaceCatLidarSDK::parsePointCloud(int ID, uint8_t *data, uint16_t len, int32_
 		result = 1;
 		// 扇区完整性判定:当接收到最后一个扇区，即起始角度为342度的时候，检查点数量
 		int end_angle = ((first_start_angle + 360) - 18) % 360;
-		if (head->start_angle / 100 == end_angle)
+		if (head->start_angle / 100 == 90 - 18)
 		{
 			if ((uint32_t)(point_num * 20) == points.size())
 			{
@@ -877,7 +930,7 @@ int PaceCatLidarSDK::parsePointCloud(int ID, uint8_t *data, uint16_t len, int32_
 				result = -2;
 			}
 		}
-		if (head->start_angle / 100 == first_start_angle)
+		if (head->start_angle / 100 == 90)
 		{
 			packet_frame.ts_beg[0] = packet_timestamp / 1000000000;
 			packet_frame.ts_beg[1] = packet_timestamp % 1000000000;
@@ -995,175 +1048,153 @@ uint8_t *PaceCatLidarSDK::load_bin(const char *path, size_t &len)
 
 	return file_buf;
 }
-
-int PaceCatLidarSDK::XReadFile(int fd, char *line, int sz)
+int PaceCatLidarSDK::readbuf(int fd, uint8_t min_len, uint16_t max_len, uint16_t timeout, uint8_t max_try_time, uint8_t function_code, unsigned char *send_buf, int send_len, unsigned char *recv_buf, int &recv_len)
 {
-	int nr = 0;
-	uint64_t t = SystemAPI::GetTimeStamp(true);
-	int zeroNum = 3;
-	while (SystemAPI::GetTimeStamp(true) < t + 200 && nr < sz)
+	int cmd_len = 0;
+	unsigned char cmd_buf[MAX_CMD_BUFFER] = {0};
+	for (int i = max_try_time; i >= 0; i--)
 	{
-		int dw = read(fd, line + nr, sz - nr);
-		if (dw > 0)
+		uint64_t cmd_timestamp = SystemAPI::getTimestamp(TimeUnit::MILLISECOND);
+		cmd_len = 0;
+		memset(cmd_buf, 0, MAX_CMD_BUFFER);
+
+		// 发送A5前导码
+		unsigned char preamble[5] = {0xA5, 0xA5, 0XA5, 0XA5, 0XA5};
+		write(fd, preamble, 5);
+		// 发送具体的指令
+		write(fd, send_buf, send_len);
+		// MYLOG<<"write"<<i;
+
+		bool isok = false;
+		while (cmd_len < max_len)
 		{
-			nr += dw;
-		}
-		else if (dw == 0)
-		{
-			zeroNum--;
-			if (zeroNum == 0)
+			uint64_t tmp_timestamp = SystemAPI::getTimestamp(TimeUnit::MILLISECOND);
+			if (tmp_timestamp - cmd_timestamp > timeout)
 				break;
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-	}
-	return nr;
-}
-int PaceCatLidarSDK::xymodem_send(int serial_fd, size_t len, const uint8_t *buf, int protocol, int wait)
-{
-	int ret;
-	uint8_t answer;
-	uint8_t eof = X_EOF;
-	ZhuiMiProtocol::xmodem_chunk chunk;
-	int skip_payload = 0;
-
-	uint64_t t = SystemAPI::GetTimeStamp(true);
-
-	if (wait)
-	{
-		printf("wait for lidar transfer signal ...\n");
-		// fflush(stdout);
-
-		do
-		{
-			if (SystemAPI::GetTimeStamp(true) > t + 5000)
+			int nr = read(fd, cmd_buf + cmd_len, max_len - cmd_len);
+			if (nr > 0)
+				cmd_len += nr;
+			else
 			{
-				return -1;
-			}
-			ret = xread(serial_fd, &answer, 1);
-			if (ret != sizeof(answer))
-			{
-				// printf("read error\n");
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 				continue;
-				// return -1;// errno;
 			}
-		} while (answer != 'C');
-		// printf("done.\n");
-	}
 
-	printf("Sending ");
-
-	if (protocol == PROTOCOL_YMODEM)
-	{
-		// strncpy((char*)chunk.payload, "filename", sizeof(chunk.payload));
-		chunk.block = 0;
-		skip_payload = 1;
-	}
-	else
-	{
-		chunk.block = 1;
-	}
-
-	chunk.start = X_STX;
-
-	while (len)
-	{
-		size_t z = 0;
-		int next = 0;
-		char status;
-
-		if (!skip_payload)
-		{
-			z = CMP_MIN(len, sizeof(chunk.payload));
-			memcpy(chunk.payload, buf, z);
-			memset(chunk.payload + z, 0xff, sizeof(chunk.payload) - z);
-		}
-		else
-		{
-			skip_payload = 0;
-		}
-
-		// chunk.crc = swap16(crc16(chunk.payload, sizeof(chunk.payload)));
-		chunk.crc = swap16(calcrc(chunk.payload, sizeof(chunk.payload)));
-		chunk.block_neg = 0xff - chunk.block;
-		ret = xwrite(serial_fd, &chunk, sizeof(chunk));
-		if (ret != sizeof(chunk))
-			return -2; // errno;
-		// ret = read_char(serial_fd, &answer, 3000);
-		ret = xread(serial_fd, &answer, 1);
-		if (ret != sizeof(answer))
-		{
-			return -3; // errno;
-		}
-		switch (answer)
-		{
-		case X_NAK:
-			status = 'N';
-			break;
-		case X_ACK:
-			status = '.';
-			next = 1;
-			break;
-		default:
-			status = '?';
-			break;
-		}
-
-		printf("%c", status);
-		fflush(stdout);
-
-		if (next)
-		{
-			chunk.block++;
-			len -= z;
-			buf += z;
-		}
-	}
-	ret = xwrite(serial_fd, &eof, sizeof(eof));
-	if (ret != sizeof(eof))
-		return -4; // errno;
-	/* send EOT again for YMODEM */
-	if (protocol == PROTOCOL_YMODEM)
-	{
-		ret = xwrite(serial_fd, &eof, sizeof(eof));
-		if (ret != sizeof(eof))
-			return -5; // errno;
-	}
-
-	printf("transfer bin finished\n");
-
-	return 0;
-}
-
-int PaceCatLidarSDK::xmodem_send(int serial_fd, size_t len, const uint8_t *buf)
-{
-	return xymodem_send(serial_fd, len, buf, PROTOCOL_XMODEM, 1);
-}
-int PaceCatLidarSDK::xread(int fd, void *buf, size_t sz)
-{
-	size_t nr = 0;
-	int idx = UART_WAITTIME;
-	while (nr < sz)
-	{
-		int dw = read(fd, buf, sz - nr);
-		if (dw > 0)
-		{
-			nr += dw;
-			idx = UART_WAITTIME;
-		}
-		else if (dw <= 0)
-		{
-			idx--;
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			if (idx == 0)
+			if (cmd_len >= min_len + 5)
+			{
+				int idx = -1;
+				for (int j = 0; j <= cmd_len - min_len; j++)
+				{
+					if (cmd_buf[j] == 0x4c && cmd_buf[j + 1] == 0x48)
+					{
+						idx = j;
+						Protocol::RX_CmdHeader *rt_cmd = (Protocol::RX_CmdHeader *)(cmd_buf + idx);
+						int need_len = idx + rt_cmd->size + 4;
+						// MYLOG<<idx<<need_len<<cmd_len;
+						if (need_len > cmd_len)
+						{
+							if (need_len > MAX_CMD_BUFFER)
+							{
+								cmd_len = MAX_CMD_BUFFER / 2;
+								memset(&cmd_buf[0], 0, cmd_len);
+								memcpy(&cmd_buf[0], &cmd_buf[cmd_len], cmd_len);
+							}
+						}
+						else
+						{
+							isok = true;
+						}
+						break;
+					}
+				}
+			}
+			if (isok)
 				break;
 		}
-		else
-			break;
+
+		if (cmd_len < min_len + 5)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+			// MYLOG<<"outtime"<<cmd_len;
+			continue;
+		}
+
+		// 开始搜索应答
+		for (int j = 0; j <= cmd_len - min_len; j++)
+		{
+			if (cmd_buf[j] == 0x4c && cmd_buf[j + 1] == 0x48)
+			{
+				Protocol::RX_CmdHeader *rx_cmd = (Protocol::RX_CmdHeader *)(cmd_buf + j);
+				// 判断测试的功能是否相同
+				// 应答总长度
+				recv_len = rx_cmd->size + 4;
+				if (j + recv_len > cmd_len)
+					return -1;
+
+				uint32_t crc = BaseAPI::stm32crc_8((uint8_t *)rx_cmd, rx_cmd->size);
+				uint32_t crc2;
+				memcpy(&crc2, (uint8_t *)rx_cmd + rx_cmd->size, sizeof(uint32_t));
+				// MYLOG<<crc<<crc2;
+				if (crc != crc2)
+					continue;
+				// 返回的是同一个应答
+				// MYLOG<<rx_cmd->cmd<<function_code<<rx_cmd->atk;
+				if (rx_cmd->cmd == function_code)
+				{
+					// 如果是查询版本号
+					if (function_code == Protocol::ZM_CMD_TYPE_SET_QUERY_VERSION)
+					{
+						recv_len = rx_cmd->size - 9;
+						memcpy(recv_buf, rx_cmd->data, recv_len);
+					}
+					if (rx_cmd->atk == Protocol::ZM_ACK_TYPE_TIMEOUT)
+					{
+						continue;
+					}
+					if (rx_cmd->atk != Protocol::ZM_ACK_TYPE_OK)
+					{
+						// MYLOG<<rx_cmd->atk;
+						break;
+					}
+					return rx_cmd->atk;
+				}
+			}
+		}
 	}
-	return nr;
+	return -1;
 }
 
-int PaceCatLidarSDK::xwrite(int fd, void *buf, size_t sz)
+bool PaceCatLidarSDK::checkBPS_isok(int fd)
 {
-	return write(fd, buf, sz);
+	int cmd_len = 0;
+	unsigned char cmd_buf[1024] = {0};
+	int max_len = 1024;
+	uint64_t timestamp = SystemAPI::getTimestamp(TimeUnit::MILLISECOND) + 4000;
+
+	//(12+5)*3
+	while (cmd_len < 51)
+	{
+		int nr = read(fd, cmd_buf + cmd_len, max_len - cmd_len);
+		if (nr > 0)
+		{
+			cmd_len += nr;
+		}
+		else
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+		uint64_t tmp_timestamp = SystemAPI::getTimestamp(TimeUnit::MILLISECOND);
+		if (tmp_timestamp > timestamp)
+			return false;
+	}
+	for (int i = 0; i < cmd_len - 17; i++)
+	{
+		if (cmd_buf[i] == 0x53 && cmd_buf[i + 1] == 0x54 && cmd_buf[i + 6] == 0x45 && cmd_buf[i + 7] == 0x44)
+		{
+			if (cmd_buf[i + 17] == 0x53 && cmd_buf[i + 1 + 17] == 0x54 && cmd_buf[i + 6 + 17] == 0x45 && cmd_buf[i + 7 + 17] == 0x44)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
 }

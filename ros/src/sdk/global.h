@@ -13,7 +13,12 @@
 #define setbit(x,y) x|=(1<<y)         //将X的第Y位置1
 #define clrbit(x,y) x&=~(1<<y)            //将X的第Y位清0
 #define M_PI 3.14159265358979323846
-
+enum  TimeUnit {
+    SECOND,
+    MILLISECOND,
+    MICROSECOND,
+    NANOSECOND
+};
 
 //自定义结构体
 struct CmdRecord
@@ -29,10 +34,6 @@ struct CmdRecord
 
 namespace BaseAPI {
     std::string stringfilter(char *str,int num);
-	bool judgepcIPAddrIsValid(const char *pcIPAddr);
-	bool mask_check(const char *mask);
-	bool mac_check(const char *mac);
-	bool checkAndMerge(int type, char*ip, char*mask, char*gateway, int port, char*result);
     unsigned int stm32crc_8(uint8_t* ptr, unsigned int len);
 
 }
@@ -43,6 +44,7 @@ int closefd(int __fd,bool isSocket);
 int getLastError();
 uint64_t GetTimeStamp(bool isTimeStamp_M);
 std::string getCurrentTime();
+uint64_t getTimestamp(TimeUnit unit);
 }
 namespace CommunicationAPI {
 bool uart_talk(int fd, int n, const char* cmd,int nhdr, const char* hdr_str,int nfetch, char* fetch);
@@ -57,7 +59,6 @@ extern "C"  int change_baud(int fd, int baud);
 
 bool is_leap_year(int year);
 int days_in_month(int year, int month);
-int64_t days_since_1900(int year, int month, int day);
 uint64_t datetime_to_nanoseconds(int year, int month, int day,
                                  int hour, int minute, int second, int nanosecond);
 

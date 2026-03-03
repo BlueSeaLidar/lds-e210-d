@@ -30,9 +30,9 @@ void LogDataCallback(uint16_t handle, const uint8_t dev_type, const char *data, 
   {
     return;
   }
-  if(dev_type==ZhuiMiProtocol::MSG_ALARM)
+  if(dev_type==Protocol::MSG_ALARM)
   {
-    ZhuiMiProtocol::UartState uartstate;
+    Protocol::UartState uartstate;
     memcpy(&uartstate,data,len);
     if(uartstate.coil_disconnection)
       printf("coil_disconnection\n");
@@ -93,7 +93,7 @@ int main()
 	ReaderWriterQueue<std::string> q(20);
 	g_pointcloud_queue = &q;
 #endif
-	std::string com_name = "/dev/ttyCH343USB1";
+	std::string com_name = "/dev/ttyCH343USB0";
 	int baud_rate = 3125000;
 	PaceCatLidarSDK::getInstance()->Init();
 	int devID = PaceCatLidarSDK::getInstance()->AddLidar(com_name,baud_rate);
@@ -102,8 +102,8 @@ int main()
 	PaceCatLidarSDK::getInstance()->SetLogDataCallBackPtr(devID, LogDataCallback);
 	PaceCatLidarSDK::getInstance()->ConnectLidar(devID);
 
-	// bool stop_isok=PaceCatLidarSDK::getInstance()->SetLidarAction(devID,ZhuiMiProtocol::STOP);
-	// bool start_isok=PaceCatLidarSDK::getInstance()->SetLidarAction(devID,ZhuiMiProtocol::START);
+	// bool stop_isok=PaceCatLidarSDK::getInstance()->SetLidarAction(devID,Protocol::STOP);
+	// bool start_isok=PaceCatLidarSDK::getInstance()->SetLidarAction(devID,Protocol::START);
 	// bool setrpm_isok=PaceCatLidarSDK::getInstance()->SetRPM(devID,1200);
 	std::string sn;
 	bool getsn_isok=PaceCatLidarSDK::getInstance()->QuerySN(devID,sn);
@@ -119,7 +119,7 @@ int main()
 		bool ret = g_pointcloud_queue->try_dequeue(chunk);
 		if (ret)
 		{
-			ZhuiMiProtocol::Packet_ZM *data = (ZhuiMiProtocol::Packet_ZM *)(chunk.c_str());
+			Protocol::Packet_ZM *data = (Protocol::Packet_ZM *)(chunk.c_str());
 			std::ostringstream oss;
 			oss << std::this_thread::get_id();
 			// printf("data:main thread:%s timestamp:%d/%d/%d %d:%d:%d %d\n",
@@ -128,9 +128,9 @@ int main()
 			// data->date_time[3],data->date_time[4],data->date_time[5],
 			// data->timestamp);
 			//第一个包的起始时间戳和最后一个包的起始时间戳，如果要算帧时间，需要time/19*20
-			printf("data:main thread:%s timestamp:%u %u %u %u \n",
-			oss.str().c_str(), 
-			data->ts_beg[0],data->ts_beg[1],data->ts_end[0],data->ts_end[1]);
+			//printf("data:main thread:%s timestamp:%u %u %u %u \n",
+			//oss.str().c_str(), 
+			//data->ts_beg[0],data->ts_beg[1],data->ts_end[0],data->ts_end[1]);
 			//距离值大于65533的值为特殊值  65533-65535 近距离盲点 距离异常 远距离忙点
 			// for (uint16_t i = 0; i < data->pointnum; i++) {
 			// 	printf("%d %d %d\n", i,data->pointdata[i].distance,data->pointdata[i].reflectivity);

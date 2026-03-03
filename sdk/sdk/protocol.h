@@ -4,9 +4,57 @@
 #include "define.h"
 
 #pragma pack(push, 1)
-namespace ZhuiMiProtocol
+namespace Protocol
 {
-	
+
+
+
+
+    
+typedef enum {
+ ZM_CMD_TYPE_START = 0, // 0x00: 启动雷达
+ ZM_CMD_TYPE_STOP, // 0x01: 停⽌雷达
+ ZM_CMD_TYPE_SET_BPS, // 0x02: 设置波特率，⽆返回
+ ZM_CMD_TYPE_SET_RPM, // 0x03: 设置转速
+ ZM_CMD_TYPE_SET_QUERY_VERSION, // 0x04: 查询固件版本号
+ ZM_CMD_TYPE_START_UPDATE, // 0x05: 固件升级开始
+ ZM_CMD_TYPE_FIRMWARE_INFO, // 0x06: 传输固件信息
+ ZM_CMD_TYPE_FIRMWARE_DATA, // 0x07: 传输固件数据
+ ZM_CMD_TYPE_END_UPDATE // 0x08: 查询固件升级状态
+ } ZM_POTOCOL_CMD_TYPE_EN;
+
+typedef enum {
+ ZM_ACK_TYPE_OK = 0, // 0x00000000: 操作成功
+ ZM_ACK_TYPE_ERROR, // 0x00000001: 通⽤错误
+ ZM_ACK_TYPE_TIMEOUT, // 0x00000002: 超时
+ ZM_ACK_TYPE_FILE_SIZE_ERR, // 0x00000003: ⽂件⼤⼩错误
+ ZM_ACK_TYPE_FILE_SIZE_CHECK_ERR // 0x00000004: 校验错误  ZM_ACK_TYPE_FILE_ID_ERR, // 0x00000005: ⽂件ID错误
+} ZM_POTOCOL_ACK_TYPE_EN;
+
+enum LidarState
+{
+	OFFLINE = 0,
+	ONLINE,
+    BUSY,
+	QUIT
+};
+enum LidarAction
+{
+	NONE,
+	FINISH,
+	START,
+	STOP,
+	CMD_TALK,
+	CACHE_CLEAR,
+};
+enum PrintDevel
+{
+	MSG_DEBUG,
+	MSG_WARM,
+	MSG_ERROR,
+	MSG_ALARM
+};
+
 struct Point_ZM
 {
     uint16_t distance;//1mm
@@ -39,14 +87,6 @@ struct Alarm_ZM
     uint8_t sign_end[2];
     uint32_t crc;
 };
-
-// struct Packet_ZM
-// {
-//     uint16_t pointnum;
-//     uint8_t  date_time[6];
-//     uint32_t beg_timestamp;
-//     Point_ZM pointdata[0];
-// };
 struct Packet_ZM
 {
 
@@ -56,7 +96,6 @@ struct Packet_ZM
 	uint32_t ts_end[2];
     Point_ZM pointdata[0];
 };
-
 
 struct FirmwareFile
 {
@@ -136,30 +175,22 @@ struct UartState
     uint8_t head_data_abnormal:1;//机头数据异常
     uint8_t infrared_receive_error:1;//红外接收错误
 };
-enum LidarState
+
+
+struct TX_CmdHeader
 {
-	OFFLINE = 0,
-	ONLINE,
-	QUIT
+    char head[2];//"LH"
+    uint16_t size;//cmd data crc32的长度
+    uint8_t cmd;//命令类型
+    uint8_t data[0];//命令数据
 };
-enum LidarAction
+struct RX_CmdHeader
 {
-	NONE,
-	FINISH,
-	START,
-	STOP,
-	CMD_TALK,
-	// GET_SN,
-	// GET_VERSION,
-	// UPGRADE,
-	CACHE_CLEAR,
-};
-enum PrintDevel
-{
-	MSG_DEBUG,
-	MSG_WARM,
-	MSG_ERROR,
-	MSG_ALARM
+    char head[2];//"LH"
+    uint16_t size;//cmd data crc32的长度
+    uint8_t cmd;//命令类型
+    uint32_t atk;//应答处理结果
+    uint8_t data[0];//应答数据
 };
 }
 

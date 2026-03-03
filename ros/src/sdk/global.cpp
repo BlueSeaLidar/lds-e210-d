@@ -413,3 +413,21 @@ void nanoseconds_to_datetime(uint64_t nanoseconds,
 
     *day = (int)days + 1;  // 加1因为days是从0开始的
 }
+
+uint64_t SystemAPI::getTimestamp(TimeUnit unit) {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+
+    switch (unit) {
+        case TimeUnit::SECOND:
+            return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
+        case TimeUnit::MILLISECOND:
+            return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+        case TimeUnit::MICROSECOND:
+            return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+        case TimeUnit::NANOSECOND:
+            return std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+        default:
+            return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+    }
+}

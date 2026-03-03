@@ -58,8 +58,8 @@ void PointCloudCallback(uint16_t handle, const uint8_t dev_type, const void *dat
     return;
   }
 
-  ZhuiMiProtocol::Packet_ZM *head = (ZhuiMiProtocol::Packet_ZM *)data;
-  ZhuiMiProtocol::Point_ZM *points = (ZhuiMiProtocol::Point_ZM *)head->pointdata;
+  Protocol::Packet_ZM *head = (Protocol::Packet_ZM *)data;
+  Protocol::Point_ZM *points = (Protocol::Point_ZM *)head->pointdata;
 
   // 获取当前帧的时间戳（ROS 时间）
   ros::Time current_stamp(head->ts_beg[0], head->ts_beg[1]);
@@ -102,8 +102,8 @@ void PointCloudCallback(uint16_t handle, const uint8_t dev_type, const void *dat
   msg.range_min = g_argdata.min_dist;
   msg.range_max = g_argdata.max_dist; // 8.0;
 
-  msg.angle_min = head->start_angle/180.0*M_PI;
-  msg.angle_max = msg.angle_min+2*M_PI - (2 * M_PI) / N;
+  msg.angle_min = 0.5*M_PI;
+  msg.angle_max = 2.5*M_PI - (2 * M_PI) / N;
   msg.angle_increment = M_PI * 2 / N;
 
   msg.intensities.resize(N);
@@ -131,9 +131,9 @@ void LogDataCallback(uint16_t handle, const uint8_t dev_type, const char *data, 
     return;
   }
   
-  if (dev_type == ZhuiMiProtocol::MSG_ALARM)
+  if (dev_type == Protocol::MSG_ALARM)
   {
-    ZhuiMiProtocol::UartState uartstate;
+    Protocol::UartState uartstate;
     memcpy(&uartstate, data, len);
     if (uartstate.coil_disconnection)
       ROS_ERROR("coil_disconnection");

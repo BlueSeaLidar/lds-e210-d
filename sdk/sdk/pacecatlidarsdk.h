@@ -13,7 +13,7 @@
 #include <sys/ioctl.h>
 #include <net/if.h>
 #include <arpa/inet.h>
-#define E210_D_SDKVERSION "V1.1_2025102001" // SDK版本号
+#define E210_D_SDKVERSION "V1.2.0_2026012601" // SDK版本号
 
 typedef struct
 {
@@ -53,7 +53,6 @@ struct CmdTaskList
 	uint8_t max_try_count;//最大重试次数
 	std::queue<CmdTask>cmdtask;//任务列表
 };
-
 
 class PaceCatLidarSDK
 {
@@ -113,14 +112,11 @@ public:
 private:
 	void UartThreadProc(uint16_t id);
 	RunConfig* GetConfig(uint16_t ID);
-	int parsePointCloud(int ID,uint8_t *data, uint16_t len,int32_t &sequence_num,uint64_t &last_timestamp,uint16_t &last_start_angle,int &first_start_angle,uint16_t &consume,std::vector<ZhuiMiProtocol::Point_ZM>&points,ZhuiMiProtocol::Packet_ZM&packet_frame);
+	int parsePointCloud(int ID,uint8_t *data, uint16_t len,int32_t &sequence_num,uint64_t &last_timestamp,uint16_t &last_start_angle,int &first_start_angle,uint16_t &consume,std::vector<Protocol::Point_ZM>&points,Protocol::Packet_ZM&packet_frame);
 
 	uint8_t* load_bin(const char* path, size_t& len);
-	int XReadFile(int fd, char* line, int sz);
-	int xymodem_send(int serial_fd, size_t len, const uint8_t* buf, int protocol, int wait);
-	int xmodem_send(int serial_fd, size_t len, const uint8_t* buf );
-	int xread(int fd, void *buf, size_t sz);
-	int xwrite(int fd, void *buf, size_t sz);
+	int  readbuf(int fd,uint8_t min_len,uint16_t max_len,uint16_t timeout,uint8_t max_try_time,uint8_t function_code,unsigned char *send_buf,int send_len,unsigned char *recv_buf,int &recv_len);
+	bool checkBPS_isok(int fd);
 	
 private:
 	static PaceCatLidarSDK *m_sdk;

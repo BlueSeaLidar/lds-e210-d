@@ -38,4 +38,27 @@ enum {
 #include <errno.h>
 #include <dirent.h>
 
+#define MAX_TIMEOUT 500                     //cmd response outtime   500ms
+#define TRY_TIME 10                         //cmd try time max 10    
+#define ZM_LOAD_FILE_OK                     "load file ok"
+#define ZM_LOAD_FILE_NG                     "load file ng"
+#define ZM_OPEN_COM_NG                      "open com ng"
+#define ZM_OPEN_COM_OK                      "open com ok"
+#define ZM_OPEN_COM_NG                      "open com ng"
+#define ZM_CMD_TYPE_SET_BPS_OK              "change bps ok"
+#define ZM_CMD_TYPE_SET_BPS_NG              "change bps ng"
+#define ZM_CMD_TYPE_SET_BPS_NG_TRY          "change bps ng,is trying"
+
+#define ZM_CMD_TYPE_SET_QUERY_VERSION_OK    "query version ok"
+#define ZM_CMD_TYPE_SET_QUERY_VERSION_NG    "query version ng"
+#define ZM_CMD_TYPE_START_UPDATE_OK         "start update ok"
+#define ZM_CMD_TYPE_START_UPDATE_NG         "start update ng"
+#define ZM_CMD_TYPE_FIRMWARE_INFO_OK        "firmware info sync ok"
+#define ZM_CMD_TYPE_FIRMWARE_INFO_NG        "firmware info sync ng"
+#define ZM_CMD_TYPE_FIRMWARE_DATA_OK        "firmware data sync ok"   
+#define ZM_CMD_TYPE_FIRMWARE_DATA_NG        "firmware data sync ng"
+#define ZM_CMD_TYPE_END_UPDATE_OK           "end update ok"
+#define ZM_CMD_TYPE_END_UPDATE_NG           "end update ng"
+
+
 #endif
